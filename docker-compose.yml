@@ -20,7 +20,7 @@ services:
     volumes:
       - /srv/docker/nginx/conf:/etc/nginx:ro
       - /srv/docker/nginx/html:/usr/share/nginx/html:ro
-      - /srv/docker/certbot/www/:/usr/share/nginx/certbot/:ro
+      - /srv/docker/certbot/www:/usr/share/nginx/certbot:ro
       - /srv/docker/certbot/conf:/etc/letsencrypt:ro
 
   dozzle:

@@ -4,7 +4,7 @@ Docker agent let's you run a local docker-compose project on a
 remote machine. Your docker commands run on the remote host and
 files are copied to the remote host using ssh.
 
-Requies:
+Requires:
 
 - docker installed on the remote host
 - you are in the docker group so you can run docker without "sudo"

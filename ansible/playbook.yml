@@ -1,4 +1,4 @@
-- hosts: remote_vm
+- hosts: lab66
 
   tasks:
     - name: Create Certbot directories
