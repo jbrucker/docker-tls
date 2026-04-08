@@ -1,0 +1,38 @@
+# Prepare one or more hosts for remote Docker container deployment.
+
+- hosts: remotes
+
+  tasks:
+#   docker-compose will create directories owned by root/mode 755
+#   when we mount non-existing directories into a container.
+#   - name: Create Certbot directories
+#     file:
+#       path: "{{ item.path }}"
+#       state: directory
+#       owner: root
+#       group: root
+#       mode: "{{ item.mode }}"
+#     loop:
+#        - { path: '/srv/docker/certbot/www', mode: '0755' }
+#        - { path: '/etc/letsencrypt', mode: '0755' } 
+#     become: yes
+
+    - name: Synchronize Nginx Config Files
+      copy:
+        src: ../nginx/
+        dest: /srv/docker/nginx/
+        directory_mode: '0755' 
+      become: yes
+
+    - name: Synchronize Web content
+      copy:
+        src: ../www/
+        dest: /srv/docker/www/
+        directory_mode: '0755' 
+      become: yes
+
+#   - name: Run Docker Compose
+#     community.docker.docker_compose_v2:
+#       project_src: /srv/docker/project
+#       state: present
+

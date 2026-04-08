@@ -1,0 +1,27 @@
+1.  Set or verify the remote host to configure.
+    Docker context and `DOMAIN` env-variable should **both** be
+    the target host, e.g.`lab0XX.kasetsart.university`.
+
+    ``` 
+    docker context show
+    cat .env
+    ```
+
+2.  Copy or sync container configuration files on the remote host.
+
+    - `cd ansible`
+    - Check the remote host you want is correctly set in `hosts.ini` and `remote-config.yml`
+    - run
+      ```
+      ansible-playbook -i hosts.ini remote-config.yml
+      ```
+    - go back to main directory: `cd ..`
+
+3.  Start containers
+    ```shell
+    docker-compose up -d
+    ```
+
+## Create a Docker Context
+
+See [Docker-agent.md](./Docker-agent.md)

@@ -1,22 +1,58 @@
-## Getting the First Certificate using Certbot
+## Getting a First TLS Certificate using Certbot
 
 There are several ways to use Certbot with Docker to get your initial
-TLS Certificate.  This file describes one way and some good and bad
-implications.
+TLS Certificate.  the Let's Encrypt service verifies the applicant's 
+control over a domain by either:
+
+- client places a "challenge file" in a known location in the web root served using http.  The web *path* to this file is `.well-known/acme-challenge/{filename}`.
+- client places a specifies TXT record in the authitative DNS service for the domain.  This method is required to obtain a wildcard certificate.
+
+Let's Encrypt provides a program named `certbot` that runs on the server
+receiving the TLS certificate.  Certbot does:
+
+- manage challenge file placement
+- manage installing and updating TLS certificates in `/etc/letsencrypt`
+- handle certificate renewal. But you need to launch `certbot` periodically to perform a check for renewal
+
+Certbot has other functions as well. See [certbot.eff.org](https://certbot.eff.org/).
+
+## Certbot with web-root Challenge File
+
+If you want to obtain a certificate using a web-based challenge file to
+prove domain control, there are three methods:
+
+- **standalone** - Certbot runs a built-in web server on port 80 to publish the challenge file.
+- **certonly** - Certbot places the challenge in the web-root of another web server (such as Nginx).
+- **nginx** - Like `certonly` but Certbot also configures Nginx
+
+
+This file describes the `certonly` approach. 
+
 
 ## Method: Certbot with Nginx Listening on Port 80
 
 In this configuration, certbot runs in one container and Nginx in another.
-Both containers share a volume where the challenge file will be written
-(written by the `certbot` app) and read by the Let's Encrypt server
-at `http://your-domain-name/.well-known/acme-challenge/{challengefile}`.
-This means Nginx must serve that same directory at the required path.
+Both containers share a volume where the challenge file is written
+(by the `certbot` app) and read by the Let's Encrypt server.
+The Internet-facing URL for the challenge must be:
 
+```
+http://your-domain-name/.well-known/acme-challenge/{challengefile}
+```
 
-You manually issue a `certbot certonly` command (in the container)
-to launch the app and get a certificate. 
+After starting both containers and verifying the Nginx is working
+(by placing a test file in `.well-known/acme-challenge`),
+you manually issue a `certbot certonly` command **inside** the certbot 
+container to launch certbot and get a certificate. 
 
-### 1. Configuration of a Shared Volume
+If it succeeds, the public and private keys are placed in 
+`/etc/letsencrypt/archive/{domain-name}` with symlinks in the directory
+`/etc/letsencrypt/live/{domain-name}`.
+
+That the "live" certificates are actually symbolic links to other files
+can be nuisance for virtualizing the location.
+
+### 1. Configure a Shared Volume
 
 Certbot and Nginx need access to a shared volume. Inside the containers the "standard" path is `/var/www/certbot`.
 
@@ -25,7 +61,9 @@ The shared volume can be either:
 - (a) directory mounted from the **host filesystem**, e.g. "/var/www/certbot" or "/srv/docker/certbot/www"
 - (b) a **named volume** defined in `docker-compose.yml`
 
-To define a named volume:
+Since the contents of this directory are only used by certbot and Nginx to serve the challenge, using a named volume is cleaner.  On the flip side, its easier to but a test file in an external volume.
+
+To define a named volume, use:
 ```yml
 
 services:
@@ -46,24 +84,24 @@ services:
 To use a mount from the host filesystem instead of a named volume, do:
 
 - 1. remove the "volumes:" section and use a full path instead of `certbot-www`, such as `/var/www/certbot` or (for isolation) `/srv/docker/certbot/www`.
-- 2. create this directory on the server where containers will run. I used Ansible for this.
+- 2. it is not necessary to create this directory (docker will create it), but you might want to create it yourself and install a test file. I used Ansible for this.
 
 Implications:
 
-1. Using the host filesystem creates some pollution of the host environment and requires an extra step to create the directory. But you can place test files in the directory to verify correct configuration.
+1. Creating a directory in the host filesystem adds some pollution of the host environment. But makes it easier to place test files to verify correct configuration.
 
-2. A named volume is managed by docker. Potentially more secure and 
+2. A named volume is managed by docker. Potentially more secure.
+
 
 ### 2. Configure `docker-compose.yml` 
 
 The important things to configure are:
 
 -  web root where the Certbot challenge file will be placed, e.g. /var/www/certbot
--  root path for where the TLS certificates will be stored.
-   - Your choice as to where on the host to store this.
-   - Must be mounted in container at `/etc/letscrypt`.
+-  root path for where the TLS certificates will be stored. This must be mounted in container at `/etc/letsencrypt`.
 
 See [docker-compose.yml](./docker-compose.yml) in this repo for example.
+
 
 ### 3. Configure Nginx to Serve Content from Challenge Path
 
@@ -83,14 +121,8 @@ server {
     location /.well-known/acme-challenge/ {
         # use the volume mount point in docker-compose.yml
         root /var/www/certbot; 
-        # I prefer: /usr/share/nginx/certbot;
     }
 
-    # Location for normal web content
-    location / {
-        root /some/path/www;
-        index index.html;
-    }
 }
 ```
 
@@ -132,7 +164,9 @@ There are two ways to do this.  They both run the same command:
       --agree-tos \
       --email $EMAIL -d $HOSTNAME
  
-I prefer the second method. Before running the `certbot certonly` command, I place a test file in `/var/www/certbot/.well-known/acme-challenge` and verify I can get it using a web browser.
+I used the second method to learning, and the "standalone" mode for true aotomation (so I don't need to reconfigure Nginx). 
+
+Before running the `certbot certonly` command, I placed a test file in `/var/www/certbot/.well-known/acme-challenge` and verify I can read it using a web browser.
 
 I also use the log files to debug problems:
 ```shell
@@ -141,9 +175,10 @@ docker logs <container-name>
 
 or run Dozzle in another container and view logs in Dozzle.
 
+
 ### Getting a Certificate Without Running Nginx
 
-A weak point of the above approach is *after* you get a cert you need to modify the Nginx configuration to use the cert with https on port 443.
+A weak point of the above approach is that you need to change the Nginx configuration file (add TLS support) *after* you get a certificate.
 That means extra manual intervention.
 
 Certbot has a `standalone` configuration where it will use a built-in
@@ -165,8 +200,14 @@ The current certificate files will be in:
 
 ```
 /etc/letsencrypt/live/<domain-name>/fullchain.pem
+/etc/letsencrypt/live/<domain-name>/cert.pem
 /etc/letsencrypt/live/<domain-name>/privkey.pem
 ```
 
-The files must both be **readable by Nginx** (which may drop privilege to a non-root user after startup).  `privkey.pem` must not be readable by anyone except root and (maybe) the nginx user.
+the files are actually symbolic links to files in `/etc/letsencrypt/archive/<domain-name>`.
+
+
+`privkey.pem` must not be readable by anyone except root and (maybe) the nginx user.
+
+By default, certbot creates both the `live` and `archive` directories as mode 0700 (readable only by root) and Nginx is able to read the certificates.
 
